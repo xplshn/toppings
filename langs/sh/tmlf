@@ -1,0 +1,96 @@
+#!/bin/sh
+# 1. PRE-PROCESS: Format the input using system printf first
+#    We append 'X' to preserve trailing newlines during command substitution,
+#    then strip it off.
+fmt="$1"
+shift
+[ "$#" -ge 0 ] && input=$(printf "$fmt" "$@"; printf 'X')
+input=${input%X}
+
+# 2. SETUP: Constants and State
+ESC=$(printf '\033')
+stack="" # Keeps track of active attribute codes (e.g., "31 1 4")
+
+# 3. PARSE LOOP: Consumes the string linearly
+while [ -n "$input" ]; do
+    
+    # Split input into: text_before_tag < remainder
+    text=${input%%<*}
+    rest=${input#*<}
+
+    # Print the text segment immediately
+    printf '%s' "$text"
+
+    # If 'text' equals 'input', there are no '<' left. We are done.
+    [ "$text" = "$input" ] && break
+
+    # Extract tag content: tag > remainder
+    tag=${rest%%>*}
+    input=${rest#*>}
+
+    # Edge case:'<' without a closing '>' (Literal printing)
+    if [ "$tag" = "$rest" ]; then
+        printf '<%s' "$rest"
+        break
+    fi
+
+    # 4. TAG PROCESSING
+    case "$tag" in
+        # --- Specials ---
+        br) printf '\n' ;;
+        lt) printf '<'  ;;
+        gt) printf '>'  ;;
+
+        # --- Closing Tags (Starts with /) ---
+        /*) 
+            # Pop the last code from the stack (remove trailing space + numbers)
+            stack=${stack% *}
+            
+            # Reset terminal, then replay the stack to restore parent state
+            printf "%s[0m" "$ESC"
+            for code in $stack; do
+                printf "%s[%sm" "$ESC" "$code"
+            done
+            ;;
+
+        # --- Opening Tags ---
+        *) 
+            base=""
+            mod=0
+            
+            # Strip prefixes to find base color/style
+            case "$tag" in
+                bright-bg-*) mod=70; core=${tag#bright-bg-} ;;
+                bright-*)    mod=60; core=${tag#bright-}    ;;
+                bg-*)        mod=10; core=${tag#bg-}        ;;
+                *)           mod=0;  core=${tag}            ;;
+            esac
+
+            # Map core names to ANSI base codes
+            case "$core" in
+                # Styles
+                bold)   base=1 ;;  dim)    base=2 ;;
+                italic) base=3 ;;  ul)     base=4 ;;
+                blink)  base=5 ;;  inv)    base=7 ;;
+                hidden) base=8 ;;  strike) base=9 ;;
+                
+                # Colors (Standard FG base 30-37)
+                black)  base=30 ;; red)    base=31 ;;
+                green)  base=32 ;; yellow) base=33 ;;
+                blue)   base=34 ;; magenta)base=35 ;;
+                cyan)   base=36 ;; white)  base=37 ;;
+                default)base=39 ;; 
+            esac
+
+            # If a valid code was found, apply and push to stack
+            if [ -n "$base" ]; then
+                code=$(( base + mod ))
+                printf "%s[%sm" "$ESC" "$code"
+                stack="$stack $code"
+            fi
+            ;;
+    esac
+done
+
+# Ensure terminal is reset at exit
+printf "%s[0m" "$ESC"
