@@ -1,96 +1,147 @@
 #!/bin/sh
-# 1. PRE-PROCESS: Format the input using system printf first
-#    We append 'X' to preserve trailing newlines during command substitution,
-#    then strip it off.
-fmt="$1"
+USAGE='tmlf — minimal tag-based ANSI formatter
+
+USAGE
+  tmlf "format" [args...]
+  tmlf -h
+
+DESCRIPTION
+  Expands printf-style format strings, then converts XML-like tags
+  into ANSI escape sequences. Stack-based, respects NO_COLOR.
+
+TAGS
+  Attributes:  <bold> <italic> <ul> <strike> <inv> <dim> <blink> <hidden>
+  Colors:      <black> <red> <green> <yellow> <blue> <magenta> <cyan> <white> <default>
+  Modifiers:   <bright-COLOR> <bg-COLOR> <bright-bg-COLOR>
+  Special:     <br> <lt> <gt>
+
+  Tags are only interpreted if properly opened AND closed.
+
+ENVIRONMENT
+  NO_COLOR  Disables all ANSI formatting
+'
+
+# --- TEST
+[ -n "$_TEST_TMLF" ] && {
+	unset _TEST_TMLF
+	$0 "plain text\n"
+	$0 "<bold>bold</bold>\n"
+	$0 "<red>red</red>\n"
+	$0 "<green>green <bold>bold</bold></green>\n"
+	$0 "<blue><ul>blue underlined</ul></blue>\n"
+	$0 "<bright-red>bright red</bright-red>\n"
+	$0 "<bg-yellow>bg yellow</bg-yellow>\n"
+	$0 "<bright-bg-blue>bright bg blue</bright-bg-blue>\n"
+	$0 "<red>nested <green>green</green> back</red>\n"
+	$0 "mix <bold><red>bold red</red></bold> end\n"
+	$0 "lt=<lt><br>gt=<gt>\n"
+	$0 "line1<br>line2\n"
+	$0 "<italic>italic <strike>strike</strike></italic>\n"
+	$0 "<cyan>cyan <inv>inv</inv></cyan>\n"
+	$0 "<default>default</default>\n"
+	$0 "no tags just text\n"
+	exit 0
+}
+
+# --- USAGE
+[ "$#" -eq 0 ] && { printf '%s\n' "$USAGE";	exit 0; }
+
+# --- PRE-PROCESS (sentinel)
+fmt=$1
 shift
-[ "$#" -ge 0 ] && input=$(printf "$fmt" "$@"; printf 'X')
+input=$(printf "$fmt" "$@"; printf 'X')
 input=${input%X}
 
-# 2. SETUP: Constants and State
+# --- SETUP
 ESC=$(printf '\033')
-stack="" # Keeps track of active attribute codes (e.g., "31 1 4")
+stack=""
 
-# 3. PARSE LOOP: Consumes the string linearly
+if [ -n "${NO_COLOR+x}" ]; then
+	emit()   { :; }
+	reset()  { :; }
+	replay() { :; }
+else
+	emit()   { printf '%s[%sm' "$ESC" "$1"; }
+	reset()  { printf '%s[0m'  "$ESC"; }
+	replay() {
+		reset
+		for e in $stack; do
+			emit "${e#*:}"
+		done
+	}
+fi
+
+# --- PARSE LOOP
 while [ -n "$input" ]; do
-    
-    # Split input into: text_before_tag < remainder
-    text=${input%%<*}
-    rest=${input#*<}
+	text=${input%%<*}
+	rest=${input#*<}
 
-    # Print the text segment immediately
-    printf '%s' "$text"
+	printf '%s' "$text"
+	[ "$text" = "$input" ] && break
 
-    # If 'text' equals 'input', there are no '<' left. We are done.
-    [ "$text" = "$input" ] && break
+	tag=${rest%%>*}
+	input=${rest#*>}
 
-    # Extract tag content: tag > remainder
-    tag=${rest%%>*}
-    input=${rest#*>}
+	# literal '<' without closing '>'
+	[ "$tag" = "$rest" ] && {
+		printf '<%s' "$rest"
+		break
+	}
 
-    # Edge case:'<' without a closing '>' (Literal printing)
-    if [ "$tag" = "$rest" ]; then
-        printf '<%s' "$rest"
-        break
-    fi
+	case "$tag" in
+		br) printf '\n' ;;
+		lt) printf '<'  ;;
+		gt) printf '>'  ;;
 
-    # 4. TAG PROCESSING
-    case "$tag" in
-        # --- Specials ---
-        br) printf '\n' ;;
-        lt) printf '<'  ;;
-        gt) printf '>'  ;;
+		/*)
+			# close = pop one level
+			stack=${stack% *}
+			replay
+			;;
 
-        # --- Closing Tags (Starts with /) ---
-        /*) 
-            # Pop the last code from the stack (remove trailing space + numbers)
-            stack=${stack% *}
-            
-            # Reset terminal, then replay the stack to restore parent state
-            printf "%s[0m" "$ESC"
-            for code in $stack; do
-                printf "%s[%sm" "$ESC" "$code"
-            done
-            ;;
+		*)
+			mod=0
+			core=$tag
 
-        # --- Opening Tags ---
-        *) 
-            base=""
-            mod=0
-            
-            # Strip prefixes to find base color/style
-            case "$tag" in
-                bright-bg-*) mod=70; core=${tag#bright-bg-} ;;
-                bright-*)    mod=60; core=${tag#bright-}    ;;
-                bg-*)        mod=10; core=${tag#bg-}        ;;
-                *)           mod=0;  core=${tag}            ;;
-            esac
+			case "$core" in
+				bright-bg-*) mod=70; core=${core#bright-bg-} ;;
+				bright-*)    mod=60; core=${core#bright-}    ;;
+				bg-*)        mod=10; core=${core#bg-}        ;;
+			esac
 
-            # Map core names to ANSI base codes
-            case "$core" in
-                # Styles
-                bold)   base=1 ;;  dim)    base=2 ;;
-                italic) base=3 ;;  ul)     base=4 ;;
-                blink)  base=5 ;;  inv)    base=7 ;;
-                hidden) base=8 ;;  strike) base=9 ;;
-                
-                # Colors (Standard FG base 30-37)
-                black)  base=30 ;; red)    base=31 ;;
-                green)  base=32 ;; yellow) base=33 ;;
-                blue)   base=34 ;; magenta)base=35 ;;
-                cyan)   base=36 ;; white)  base=37 ;;
-                default)base=39 ;; 
-            esac
+			base=""
+			case "$core" in
+				bold)    base=1  ;; dim)     base=2  ;;
+				italic)  base=3  ;; ul)      base=4  ;;
+				blink)   base=5  ;; inv)     base=7  ;;
+				hidden)  base=8  ;; strike)  base=9  ;;
+				black)   base=30 ;; red)     base=31 ;;
+				green)   base=32 ;; yellow)  base=33 ;;
+				blue)    base=34 ;; magenta) base=35 ;;
+				cyan)    base=36 ;; white)   base=37 ;;
+				default) base=39 ;;
+			esac
 
-            # If a valid code was found, apply and push to stack
-            if [ -n "$base" ]; then
-                code=$(( base + mod ))
-                printf "%s[%sm" "$ESC" "$code"
-                stack="$stack $code"
-            fi
-            ;;
-    esac
+			# invalid tag → literal
+			[ -n "$base" ] || {
+				printf '<%s>' "$tag"
+				continue
+			}
+
+			# must have matching closing tag
+			case "$input" in
+				*"</$tag>"*) ;;
+				*)
+					printf '<%s>' "$tag"
+					continue
+					;;
+			esac
+
+			code=$((base + mod))
+			emit "$code"
+			stack="$stack $tag:$code"
+			;;
+	esac
 done
 
-# Ensure terminal is reset at exit
-printf "%s[0m" "$ESC"
+reset
