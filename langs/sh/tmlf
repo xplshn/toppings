@@ -1,5 +1,5 @@
 #!/bin/sh
-#tmlf - minimal tag-based ANSI formatter
+#tmlf - tag-based ANSI formatter written in pure shell and in exactly 57LOC
 #
 #USAGE
 #  tmlf "format" [args...]
