@@ -1,26 +1,25 @@
 #!/bin/sh
-USAGE='tmlf - minimal tag-based ANSI formatter
-
-USAGE
-  tmlf "format" [args...]
-  tmlf -h
-
-DESCRIPTION
-  Expands printf-style format strings, then converts XML-like tags
-  into ANSI escape sequences. Stack-based, respects NO_COLOR.
-
-TAGS
-  Attributes:  <bold> <italic> <ul> <strike> <inv> <dim> <blink> <hidden>
-  Colors:      <black> <red> <green> <yellow> <blue> <magenta> <cyan> <white> <default>
-  Modifiers:   <bright-COLOR> <bg-COLOR> <bright-bg-COLOR>
-  Special:     <br> <lt> <gt>
-
-  Tags are only interpreted if properly opened AND closed.
-
-ENVIRONMENT
-  NO_COLOR  Disables all ANSI formatting
-'
-
+#tmlf - minimal tag-based ANSI formatter
+#
+#USAGE
+#  tmlf "format" [args...]
+#  tmlf -h
+#
+#DESCRIPTION
+#  Expands printf-style format strings, then converts XML-like tags
+#  into ANSI escape sequences. Stack-based, respects NO_COLOR.
+#
+#TAGS
+#  Attributes:  <bold> <italic> <ul> <strike> <inv> <dim> <blink> <hidden>
+#  Colors:      <black> <red> <green> <yellow> <blue> <magenta> <cyan> <white> <default>
+#  Modifiers:   <bright-COLOR> <bg-COLOR> <bright-bg-COLOR>
+#  Special:     <br> <lt> <gt>
+#
+#  Tags are only interpreted if properly opened AND closed.
+#
+#ENVIRONMENT
+#  NO_COLOR  Disables all ANSI formatting
+#
 # --- TEST
 [ -n "$_TEST_TMLF" ] && {
 	unset _TEST_TMLF
@@ -44,7 +43,7 @@ ENVIRONMENT
 }
 
 # --- USAGE
-[ "$#" -eq 0 ] && { printf '%s\n' "$USAGE";	exit 0; }
+[ "$#" -eq 0 ] && { head -n 22 "$0" | tail -n 21 | sed 's/^#//'; exit 0; }
 
 # --- PRE-PROCESS (sentinel)
 fmt=$1
