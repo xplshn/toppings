@@ -3,7 +3,6 @@
 #
 #USAGE
 #  tmlf "format" [args...]
-#  tmlf -h
 #
 #DESCRIPTION
 #  Expands printf-style format strings, then converts XML-like tags
@@ -43,7 +42,7 @@
 }
 
 # --- USAGE
-[ "$#" -eq 0 ] && { head -n 22 "$0" | tail -n 21 | sed 's/^#//'; exit 0; }
+[ "$#" -eq 0 ] && { sed -n '1,/^# --- TEST/ { /^#!\/bin\/sh/! { /^# --- TEST/! s/^#//p } }' "$0"; exit 0; } #[ "$#" -eq 0 ] && { head -n 21 "$0" | tail -n 20 | sed 's/^#//'; exit 0; }
 
 # --- PRE-PROCESS (sentinel)
 fmt=$1
