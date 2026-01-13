@@ -120,7 +120,7 @@ while [ -n "$input" ]; do
 				default) base=39 ;;
 			esac
 
-			# invalid tag → literal
+			# invalid tag -> literal
 			[ -n "$base" ] || {
 				printf '<%s>' "$tag"
 				continue
